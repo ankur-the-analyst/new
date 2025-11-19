@@ -112,13 +112,14 @@
         let timeLeft = TIME_PER_QUESTION;
         let isQuizActive = localStorage.getItem('isQuizActive') === 'false' ? false : true; 
         
-        // Violations
+        // Violations - Extension violations are now merged into windowSwitch
         let proctoringViolations = { total: 0, windowSwitch: 0, copyPaste: 0 };
         const MAX_VIOLATIONS = 3;
         let violationCooldown = false; 
+        let extensionCheckInterval; 
         
         // **Universal Edge Thresholds**
-        const EDGE_THRESHOLD = 50; // Pixels from any edge considered a "Danger Zone"
+        const EDGE_THRESHOLD = 50; 
         const TOP_EDGE_THRESHOLD = 50; 
 
         // DOM Elements
@@ -202,7 +203,8 @@
                 name, email, admissionNo, score, total: totalQuestions,
                 percentage: percentageVal,
                 violations: violations.total, 
-                windowSwitchViolations: violations.windowSwitch,
+                // Extension violations are now merged into windowSwitchViolations
+                windowSwitchViolations: violations.windowSwitch, 
                 copyPasteViolations: violations.copyPaste,
                 timestamp: new Date().toLocaleString()
             };
@@ -222,7 +224,8 @@
                 total_questions: resultData.total,
                 percentage: resultData.percentage.toString(), 
                 total_violations: resultData.violations,
-                window_switch_violations: resultData.windowSwitchViolations,
+                // window_switch_violations now includes extension detections
+                window_switch_violations: resultData.windowSwitchViolations, 
                 copy_paste_violations: resultData.copyPasteViolations,
                 submission_time: new Date().toISOString(),
                 student_name: resultData.name,
@@ -281,8 +284,9 @@
                 if (reason === 'swipedown') detailMsg = "Do not swipe from the **top edge** (Notification Panel).";
                 else if (reason === 'swipeleft' || reason === 'swiperight') detailMsg = "Do not swipe from the **side edges** (Browser Navigation).";
                 else if (reason === 'swipeup') detailMsg = "Do not swipe from the **bottom edge** (Control Center/Home Bar).";
-                else if (reason === 'blur') detailMsg = "Do not switch apps or minimize the browser.";
+                else if (reason === 'blur') detailMsg = "Do not switch apps, minimize the browser, or lose focus.";
                 else if (reason === 'copypaste') detailMsg = "Copy/Paste is strictly prohibited.";
+                else if (reason === 'extension') detailMsg = "Unauthorized **browser extension interference** detected.";
 
                 VIOLATION_MESSAGE.innerHTML = `
                     <p class="text-lg font-bold text-gray-800 mb-2">⚠️ ${detailMsg}</p>
@@ -311,7 +315,8 @@
                 proctoringViolations.windowSwitch++; 
                 violationCooldown = true;
                 
-                setTimeout(() => { violationCooldown = false; }, 3000); 
+                // *** REDUCED COOLDOWN TIME TO 1000ms (1 second) ***
+                setTimeout(() => { violationCooldown = false; }, 1000); 
             } 
             else if (type === 'copyPaste') {
                 proctoringViolations.copyPaste++;
@@ -324,7 +329,27 @@
             if (vDisplay) vDisplay.innerHTML = `⚠️ Violations: ${proctoringViolations.total} / ${MAX_VIOLATIONS}`;
 
             if (proctoringViolations.total >= MAX_VIOLATIONS) showViolationModal(true, reason); 
+            // Only 'windowSwitch' type (which now includes extension events) triggers the non-terminating modal.
             else if (type === 'windowSwitch') showViolationModal(false, reason); 
+        }
+        
+        // --- Extension Detection Logic (Indirect/Experimental) ---
+        function detectSpecificExtensionFootprints() {
+            if (currentQuestionIndex >= quizQuestions.length || violationCooldown) return;
+
+            // Check 1: Known injected global properties from common extensions (e.g., ad-blockers, tools)
+            if (window.Stranalytics || window.adblocker || window.betterTranslate || window.__REACT_DEVTOOLS_GLOBAL_HOOK__) {
+                // Log as a windowSwitch type violation with reason 'extension'
+                handleProctoringViolation('windowSwitch', 'extension'); 
+                return;
+            }
+
+            // Check 2: Check for existence of Chrome/Firefox extension APIs outside of a secure context.
+            if (window.chrome && window.chrome.runtime) {
+                // Log as a windowSwitch type violation with reason 'extension'
+                handleProctoringViolation('windowSwitch', 'extension');
+                return;
+            }
         }
         
         const visibilityChangeHandler = () => { 
@@ -336,9 +361,8 @@
             handleProctoringViolation('windowSwitch', 'blur'); 
         };
 
-        // 3. EDGE SWIPE DETECTION (TOUCH) - Enhanced for all edges
+        // 3. EDGE SWIPE DETECTION (TOUCH)
         const touchStartHandler = (e) => {
-            // Only fire if we are actively in the quiz
             if (currentQuestionIndex >= quizQuestions.length) return; 
 
             if(e.touches && e.touches.length > 0) {
@@ -348,25 +372,12 @@
                 const screenHeight = window.innerHeight;
                 let reason = null;
 
-                // 1. Top Edge Swipe (Notification Panel)
-                if(touchY < TOP_EDGE_THRESHOLD) {
-                    reason = 'swipedown';
-                } 
-                // 2. Left Edge Swipe (Back Navigation)
-                else if(touchX < EDGE_THRESHOLD) {
-                    reason = 'swipeleft';
-                }
-                // 3. Right Edge Swipe (Forward Navigation)
-                else if(touchX > screenWidth - EDGE_THRESHOLD) {
-                    reason = 'swiperight';
-                }
-                // 4. Bottom Edge Swipe (Control Center/Home Bar)
-                else if(touchY > screenHeight - EDGE_THRESHOLD) {
-                    reason = 'swipeup';
-                }
+                if(touchY < TOP_EDGE_THRESHOLD) reason = 'swipedown';
+                else if(touchX < EDGE_THRESHOLD) reason = 'swipeleft';
+                else if(touchX > screenWidth - EDGE_THRESHOLD) reason = 'swiperight';
+                else if(touchY > screenHeight - EDGE_THRESHOLD) reason = 'swipeup';
                 
                 if (reason) {
-                    // Prevent default browser behavior (like navigating back/forward on side swipes)
                     e.preventDefault(); 
                     handleProctoringViolation('windowSwitch', reason);
                 }
@@ -383,16 +394,20 @@
             document.addEventListener('visibilitychange', visibilityChangeHandler);
             window.addEventListener('blur', blurHandler); 
             
-            // Touch listener for all Edge Swipes (now universal)
             document.addEventListener('touchstart', touchStartHandler, { passive: false });
             
             document.addEventListener('copy', copyCutPasteHandler);
             document.addEventListener('cut', copyCutPasteHandler);
             document.addEventListener('paste', copyCutPasteHandler);
             document.addEventListener('contextmenu', event => event.preventDefault());
+
+            // Start periodic extension check
+            detectSpecificExtensionFootprints(); 
+            extensionCheckInterval = setInterval(detectSpecificExtensionFootprints, 5000); // Check every 5 seconds
         }
 
         function disableProctoring() {
+            clearInterval(extensionCheckInterval); // Stop extension check
             document.removeEventListener('visibilitychange', visibilityChangeHandler);
             window.removeEventListener('blur', blurHandler);
             document.removeEventListener('touchstart', touchStartHandler);
@@ -450,11 +465,11 @@
                     <div class="mobile-warning">
                         <p class="font-bold text-red-800"><i class="fas fa-ban mr-2"></i>PROCTORING RULES:</p>
                         <ul class="list-disc ml-5 mt-2 space-y-2 text-sm text-red-900 font-medium">
-                            <li>**Do NOT use browser extensions (AI, screen readers, VPNs, etc.).**</li>
-                            <li>Do NOT touch ANY edge of the screen (no side/top swipes).</li>
-                            <li>Do NOT switch apps or minimize the browser.</li>
+                            <li>**STRICTLY NO BROWSER EXTENSIONS (AI, screen readers, VPNs, etc.).**</li>
+                            <li>Do NOT touch ANY edge of the screen (no side/top/bottom swipes).</li>
+                            <li>Do NOT switch apps, minimize the browser, or lose focus.</li>
                         </ul>
-                        <p class="mt-4 p-2 bg-red-100 border border-red-200 rounded text-xs text-center font-bold text-red-700">All violations are logged and will lead to immediate exam termination after ${MAX_VIOLATIONS} warnings.</p>
+                        <p class="mt-4 p-2 bg-red-100 border border-red-200 rounded text-xs text-center font-bold text-red-700">All forms of interference are logged and will lead to immediate exam termination after ${MAX_VIOLATIONS} warnings.</p>
                     </div>
 
                     <form id="signInForm" class="space-y-4 mt-6">
@@ -575,7 +590,12 @@
 
                     <div class="bg-blue-50 p-6 rounded-xl mb-8 text-left">
                         <div class="flex justify-between mb-2"><span>Score:</span><span class="font-bold">${score} / ${quizQuestions.length}</span></div>
-                        <div class="flex justify-between"><span>Violations:</span><span class="font-bold text-red-600">${proctoringViolations.total}</span></div>
+                        
+                        <div class="border-t border-blue-100 pt-3 mt-3">
+                            <div class="flex justify-between mb-1"><span class="font-bold">Total Violations Recorded:</span><span class="font-bold text-red-600">${proctoringViolations.total}</span></div>
+                            <div class="flex justify-between text-sm text-gray-700"><span>(Window Switch / Extension / Focus Loss):</span><span class="font-bold">${proctoringViolations.windowSwitch} incidents</span></div>
+                            <div class="flex justify-between text-sm text-gray-700"><span>(Copy/Paste Attempt):</span><span class="font-bold">${proctoringViolations.copyPaste} incidents</span></div>
+                        </div>
                     </div>
 
                     <button onclick="setView('signin')" class="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Return to Sign-In</button>
