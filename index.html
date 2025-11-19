@@ -115,7 +115,11 @@
         // Violations - Extension violations are now merged into windowSwitch
         let proctoringViolations = { total: 0, windowSwitch: 0, copyPaste: 0 };
         const MAX_VIOLATIONS = 3;
-        const WINDOW_SWITCH_COOLDOWN = 1000; // 1 second
+        
+        // **CRITICAL FIX: Reduced time to close loophole**
+        const WINDOW_SWITCH_COOLDOWN = 500; // Reduced from 1000ms to 500ms
+        const EXTENSION_CHECK_INTERVAL = 500; // Reduced from 5000ms to 500ms
+        
         let violationCooldown = false; 
         let extensionCheckInterval; 
         
@@ -280,7 +284,7 @@
                     calculateAndShowResults(true); 
                 };
             } else {
-                // *** FIX: Pause the extension check interval to prevent repeated modal triggers ***
+                // Pause the extension check interval to prevent repeated modal triggers
                 clearInterval(extensionCheckInterval); 
                 
                 // Specific messages based on violation type
@@ -306,10 +310,8 @@
                 MODAL_CONFIRM_BTN.onclick = () => {
                     VIOLATION_MODAL.style.display = 'none';
                     
-                    // *** FIX: Resume the extension check interval on button click ***
-                    // We remove the immediate check (detectSpecificExtensionFootprints()) to prevent the freeze
-                    // caused by instantaneous re-triggering of the modal. The check will happen on the next interval tick.
-                    extensionCheckInterval = setInterval(detectSpecificExtensionFootprints, 5000); 
+                    // Resume the extension check interval with a significantly reduced time
+                    extensionCheckInterval = setInterval(detectSpecificExtensionFootprints, EXTENSION_CHECK_INTERVAL); 
                     
                     requestFullScreen(); // THIS MUST BE THE ONLY FULLSCREEN CALL TIED TO A CLICK
                 };
@@ -326,6 +328,7 @@
                 proctoringViolations.windowSwitch++; 
                 violationCooldown = true;
                 
+                // Uses the new reduced cooldown time
                 setTimeout(() => { violationCooldown = false; }, WINDOW_SWITCH_COOLDOWN); 
             } 
             else if (type === 'copyPaste') {
@@ -423,9 +426,9 @@
             
             document.addEventListener('keydown', screenshotKeyHandler); 
 
-            // Start periodic extension check
+            // Start periodic extension check using the reduced interval
             detectSpecificExtensionFootprints(); 
-            extensionCheckInterval = setInterval(detectSpecificExtensionFootprints, 5000); // Check every 5 seconds
+            extensionCheckInterval = setInterval(detectSpecificExtensionFootprints, EXTENSION_CHECK_INTERVAL); // Check every 500ms
         }
 
         function disableProctoring() {
