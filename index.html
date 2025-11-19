@@ -115,7 +115,8 @@
         // Violations - Extension violations are now merged into windowSwitch
         let proctoringViolations = { total: 0, windowSwitch: 0, copyPaste: 0 };
         const MAX_VIOLATIONS = 3;
-        const WINDOW_SWITCH_COOLDOWN = 1000; // 1 second
+        // The cooldown period (in milliseconds) before another windowSwitch/blur violation can be recorded.
+        const WINDOW_SWITCH_COOLDOWN = 100; // Reduced to 0.1 second (100ms) for high security
         let violationCooldown = false; 
         let extensionCheckInterval; 
         
@@ -280,7 +281,7 @@
                     calculateAndShowResults(true); 
                 };
             } else {
-                // *** FIX: Pause the extension check interval to prevent repeated modal triggers ***
+                // Pause the extension check interval to prevent repeated modal triggers
                 clearInterval(extensionCheckInterval); 
                 
                 // Specific messages based on violation type
@@ -306,8 +307,7 @@
                 MODAL_CONFIRM_BTN.onclick = () => {
                     VIOLATION_MODAL.style.display = 'none';
                     
-                    // *** FIX: Resume the extension check interval on button click ***
-                    detectSpecificExtensionFootprints(); 
+                    // Resume the extension check interval on button click. The check will happen on the next interval tick.
                     extensionCheckInterval = setInterval(detectSpecificExtensionFootprints, 5000); 
                     
                     requestFullScreen(); // THIS MUST BE THE ONLY FULLSCREEN CALL TIED TO A CLICK
@@ -325,6 +325,7 @@
                 proctoringViolations.windowSwitch++; 
                 violationCooldown = true;
                 
+                // Set the cooldown using the new reduced time
                 setTimeout(() => { violationCooldown = false; }, WINDOW_SWITCH_COOLDOWN); 
             } 
             else if (type === 'copyPaste') {
