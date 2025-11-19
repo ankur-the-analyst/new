@@ -280,6 +280,9 @@
                     calculateAndShowResults(true); 
                 };
             } else {
+                // *** FIX: Pause the extension check interval to prevent repeated modal triggers ***
+                clearInterval(extensionCheckInterval); 
+                
                 // Specific messages based on violation type
                 let detailMsg = "Suspicious activity detected.";
                 if (reason === 'swipedown') detailMsg = "Do not swipe from the **top edge** (Notification Panel).";
@@ -287,7 +290,7 @@
                 else if (reason === 'swipeup') detailMsg = "Do not swipe from the **bottom edge** (Control Center/Home Bar).";
                 else if (reason === 'blur') detailMsg = "Do not switch apps, minimize the browser, or lose focus.";
                 else if (reason === 'copypaste') detailMsg = "Copy/Paste is strictly prohibited.";
-                else if (reason === 'screenshot') detailMsg = "Unauthorized **screenshot attempt** detected."; // <-- NEW
+                else if (reason === 'screenshot') detailMsg = "Unauthorized **screenshot attempt** detected."; 
                 else if (reason === 'extension') detailMsg = "Unauthorized **browser extension interference** detected.";
 
                 VIOLATION_MESSAGE.innerHTML = `
@@ -302,6 +305,11 @@
                 MODAL_CONFIRM_BTN.className = "w-full py-3 px-4 rounded-lg text-white font-bold bg-yellow-600 hover:bg-yellow-700 transition shadow-md";
                 MODAL_CONFIRM_BTN.onclick = () => {
                     VIOLATION_MODAL.style.display = 'none';
+                    
+                    // *** FIX: Resume the extension check interval on button click ***
+                    detectSpecificExtensionFootprints(); 
+                    extensionCheckInterval = setInterval(detectSpecificExtensionFootprints, 5000); 
+                    
                     requestFullScreen(); // THIS MUST BE THE ONLY FULLSCREEN CALL TIED TO A CLICK
                 };
             }
@@ -391,7 +399,7 @@
             handleProctoringViolation('copyPaste', 'copypaste');
         };
 
-        // 4. SCREENSHOT KEY DETECTION (PrintScreen) <-- NEW HANDLER
+        // 4. SCREENSHOT KEY DETECTION (PrintScreen)
         const screenshotKeyHandler = (e) => {
             // Key codes for PrintScreen: 44 (standard, works cross-browser), 'PrintScreen' key name.
             if (e.key === 'PrintScreen' || e.keyCode === 44) {
@@ -400,7 +408,6 @@
                 handleProctoringViolation('copyPaste', 'screenshot');
             } 
         };
-        // END NEW HANDLER
 
         function enableProctoring() {
             document.addEventListener('visibilitychange', visibilityChangeHandler);
@@ -413,7 +420,7 @@
             document.addEventListener('paste', copyCutPasteHandler);
             document.addEventListener('contextmenu', event => event.preventDefault());
             
-            document.addEventListener('keydown', screenshotKeyHandler); // <-- NEW LISTENER
+            document.addEventListener('keydown', screenshotKeyHandler); 
 
             // Start periodic extension check
             detectSpecificExtensionFootprints(); 
@@ -428,7 +435,7 @@
             document.removeEventListener('copy', copyCutPasteHandler);
             document.removeEventListener('cut', copyCutPasteHandler);
             document.removeEventListener('paste', copyCutPasteHandler);
-            document.removeEventListener('keydown', screenshotKeyHandler); // <-- NEW REMOVAL
+            document.removeEventListener('keydown', screenshotKeyHandler); 
         }
 
         // --- TIMER & LOGIC ---
@@ -614,7 +621,7 @@
                         </div>
                     </div>
 
-                    <button onclick="setView('signin')" class="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Return to Sign-In</button>
+                    <button onclick="window.location.reload()" class="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Return to Sign-In</button>
                 </div>
             `;
         }
