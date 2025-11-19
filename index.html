@@ -115,6 +115,7 @@
         // Violations - Extension violations are now merged into windowSwitch
         let proctoringViolations = { total: 0, windowSwitch: 0, copyPaste: 0 };
         const MAX_VIOLATIONS = 3;
+        const WINDOW_SWITCH_COOLDOWN = 1000; // 1 second
         let violationCooldown = false; 
         let extensionCheckInterval; 
         
@@ -203,8 +204,9 @@
                 name, email, admissionNo, score, total: totalQuestions,
                 percentage: percentageVal,
                 violations: violations.total, 
-                // Extension violations are now merged into windowSwitchViolations
+                // Extension and Swipe violations are logged under windowSwitchViolations
                 windowSwitchViolations: violations.windowSwitch, 
+                // Copy, Paste, Cut, and Screenshot violations are logged under copyPasteViolations
                 copyPasteViolations: violations.copyPaste,
                 timestamp: new Date().toLocaleString()
             };
@@ -224,7 +226,6 @@
                 total_questions: resultData.total,
                 percentage: resultData.percentage.toString(), 
                 total_violations: resultData.violations,
-                // window_switch_violations now includes extension detections
                 window_switch_violations: resultData.windowSwitchViolations, 
                 copy_paste_violations: resultData.copyPasteViolations,
                 submission_time: new Date().toISOString(),
@@ -286,6 +287,7 @@
                 else if (reason === 'swipeup') detailMsg = "Do not swipe from the **bottom edge** (Control Center/Home Bar).";
                 else if (reason === 'blur') detailMsg = "Do not switch apps, minimize the browser, or lose focus.";
                 else if (reason === 'copypaste') detailMsg = "Copy/Paste is strictly prohibited.";
+                else if (reason === 'screenshot') detailMsg = "Unauthorized **screenshot attempt** detected."; // <-- NEW
                 else if (reason === 'extension') detailMsg = "Unauthorized **browser extension interference** detected.";
 
                 VIOLATION_MESSAGE.innerHTML = `
@@ -315,8 +317,7 @@
                 proctoringViolations.windowSwitch++; 
                 violationCooldown = true;
                 
-                // *** REDUCED COOLDOWN TIME TO 1000ms (1 second) ***
-                setTimeout(() => { violationCooldown = false; }, 1000); 
+                setTimeout(() => { violationCooldown = false; }, WINDOW_SWITCH_COOLDOWN); 
             } 
             else if (type === 'copyPaste') {
                 proctoringViolations.copyPaste++;
@@ -390,6 +391,17 @@
             handleProctoringViolation('copyPaste', 'copypaste');
         };
 
+        // 4. SCREENSHOT KEY DETECTION (PrintScreen) <-- NEW HANDLER
+        const screenshotKeyHandler = (e) => {
+            // Key codes for PrintScreen: 44 (standard, works cross-browser), 'PrintScreen' key name.
+            if (e.key === 'PrintScreen' || e.keyCode === 44) {
+                e.preventDefault(); // Stop the default screenshot action
+                showTempMessage('Screenshot attempt detected.', true); 
+                handleProctoringViolation('copyPaste', 'screenshot');
+            } 
+        };
+        // END NEW HANDLER
+
         function enableProctoring() {
             document.addEventListener('visibilitychange', visibilityChangeHandler);
             window.addEventListener('blur', blurHandler); 
@@ -400,6 +412,8 @@
             document.addEventListener('cut', copyCutPasteHandler);
             document.addEventListener('paste', copyCutPasteHandler);
             document.addEventListener('contextmenu', event => event.preventDefault());
+            
+            document.addEventListener('keydown', screenshotKeyHandler); // <-- NEW LISTENER
 
             // Start periodic extension check
             detectSpecificExtensionFootprints(); 
@@ -414,6 +428,7 @@
             document.removeEventListener('copy', copyCutPasteHandler);
             document.removeEventListener('cut', copyCutPasteHandler);
             document.removeEventListener('paste', copyCutPasteHandler);
+            document.removeEventListener('keydown', screenshotKeyHandler); // <-- NEW REMOVAL
         }
 
         // --- TIMER & LOGIC ---
@@ -468,6 +483,7 @@
                             <li>**STRICTLY NO BROWSER EXTENSIONS (AI, screen readers, VPNs, etc.).**</li>
                             <li>Do NOT touch ANY edge of the screen (no side/top/bottom swipes).</li>
                             <li>Do NOT switch apps, minimize the browser, or lose focus.</li>
+                            <li>Do NOT attempt to **Copy, Paste, or Screenshot** the quiz content.</li>
                         </ul>
                         <p class="mt-4 p-2 bg-red-100 border border-red-200 rounded text-xs text-center font-bold text-red-700">All forms of interference are logged and will lead to immediate exam termination after ${MAX_VIOLATIONS} warnings.</p>
                     </div>
@@ -594,7 +610,7 @@
                         <div class="border-t border-blue-100 pt-3 mt-3">
                             <div class="flex justify-between mb-1"><span class="font-bold">Total Violations Recorded:</span><span class="font-bold text-red-600">${proctoringViolations.total}</span></div>
                             <div class="flex justify-between text-sm text-gray-700"><span>(Window Switch / Extension / Focus Loss):</span><span class="font-bold">${proctoringViolations.windowSwitch} incidents</span></div>
-                            <div class="flex justify-between text-sm text-gray-700"><span>(Copy/Paste Attempt):</span><span class="font-bold">${proctoringViolations.copyPaste} incidents</span></div>
+                            <div class="flex justify-between text-sm text-gray-700"><span>(Copy/Paste / Screenshot Attempt):</span><span class="font-bold">${proctoringViolations.copyPaste} incidents</span></div>
                         </div>
                     </div>
 
