@@ -114,6 +114,7 @@
         
         // Violations - Extension violations are now merged into windowSwitch
         let proctoringViolations = { total: 0, windowSwitch: 0, copyPaste: 0 };
+        // MAXIMUM VIOLATIONS SET TO 3 AS PER USER REQUEST
         const MAX_VIOLATIONS = 3;
         
         // **CRITICAL FIX: Reduced time to close loophole**
@@ -273,14 +274,19 @@
         
         function showViolationModal(isTerminating, reason) {
             if (isTerminating) {
-                VIOLATION_MESSAGE.innerHTML = `<p class="text-red-700 font-bold mb-2 text-lg">EXAM TERMINATED</p><p>You exceeded the limit of ${MAX_VIOLATIONS} violations.</p>`;
+                VIOLATION_MESSAGE.innerHTML = `<p class="text-red-700 font-bold mb-2 text-lg">EXAM TERMINATED</p><p>You exceeded the limit of ${MAX_VIOLATIONS} violations. The exam will now be submitted.</p>`;
                 MODAL_CONFIRM_BTN.textContent = 'Submit Exam Now';
                 MODAL_CONFIRM_BTN.className = "w-full py-3 px-4 rounded-lg text-white font-bold bg-red-700 hover:bg-red-800 transition shadow-lg";
+                
+                // CRITICAL FIX: The logic to stop timer, disable proctoring, and submit is now called
+                // immediately *after* the modal is shown AND when the button is clicked.
+                stopTimer();
+                disableProctoring(); 
+                exitFullScreen();
+                
                 MODAL_CONFIRM_BTN.onclick = () => {
                     VIOLATION_MODAL.style.display = 'none';
-                    stopTimer();
-                    disableProctoring(); 
-                    exitFullScreen();
+                    // The quiz is submitted *here* after the final click
                     calculateAndShowResults(true); 
                 };
             } else {
@@ -322,6 +328,9 @@
         function handleProctoringViolation(type, reason) {
             if (currentQuestionIndex >= quizQuestions.length) return; 
             
+            // Check if violation limit is already reached before logging a new one
+            if (proctoringViolations.total >= MAX_VIOLATIONS) return; 
+            
             if (type === 'windowSwitch') {
                 if (violationCooldown) return; 
                 
@@ -341,9 +350,18 @@
             const vDisplay = document.getElementById('violationCountDisplay');
             if (vDisplay) vDisplay.innerHTML = `⚠️ Violations: ${proctoringViolations.total} / ${MAX_VIOLATIONS}`;
 
-            if (proctoringViolations.total >= MAX_VIOLATIONS) showViolationModal(true, reason); 
+            // CRITICAL FIX: Disable all proctoring *immediately* upon hitting MAX_VIOLATIONS
+            if (proctoringViolations.total >= MAX_VIOLATIONS) {
+                // When terminating, we disable proctoring *before* showing the modal
+                // to prevent the submission click from triggering a 4th violation.
+                disableProctoring(); 
+                showViolationModal(true, reason); 
+                
+            }
             // Only 'windowSwitch' type (which now includes extension events) triggers the non-terminating modal.
-            else if (type === 'windowSwitch') showViolationModal(false, reason); 
+            else if (type === 'windowSwitch') {
+                 showViolationModal(false, reason); 
+            }
         }
         
         // --- Extension Detection Logic (Indirect/Experimental) ---
@@ -753,7 +771,7 @@
             
             const fsHandler = () => {
                 // If exiting fullscreen while quiz is active and modal is not showing, trigger a violation.
-                if (!document.fullscreenElement && !document.webkitFullscreenElement && currentQuestionIndex < quizQuestions.length && VIOLATION_MODAL.style.display !== 'flex') {
+                if (!document.fullscreenElement && !document.webkitFullscreenElement && currentQuestionIndex < quizQuestions.length && VIOLATION_MODAL.style.display !== 'flex' && proctoringViolations.total < MAX_VIOLATIONS) {
                     handleProctoringViolation('windowSwitch', 'blur'); 
                 }
             };
